@@ -13,6 +13,7 @@ from six.moves import xrange
 from sklearn.base import ClassifierMixin
 from sklearn.ensemble import BaseEnsemble
 from sklearn.ensemble.forest import BaseForest
+from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.tree import DecisionTreeClassifier
@@ -243,11 +244,11 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
         learning_rate=1,
         algorithm='BINARY',  # default original adaboost
         random_state=None,
-        dv_interval=50,
-        dv_max_iter=50,
-        dv_loss="log",
-        dv_penalty="none"
+        dv_interval=5,
+        dv_solver=None,
     ):
+        """dv_solver should set warm_start=True, fit_intercept=False"""
+
         # If algorithm is DYNAMIC_VOTES,
         # the default is to adjust votes only at the end of training
         super(AdaBoostClassifier, self).__init__(
@@ -258,9 +259,11 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
         )
         self.algorithm = algorithm
         self.dv_interval = dv_interval
-        self.dv_max_iter = dv_max_iter
-        self.dv_loss = dv_loss
-        self.dv_penalty = dv_penalty
+        if dv_solver == None:
+            # default solver
+            self.dv_solver = LogisticRegression(fit_intercept=False, max_iter=10, penalty='l2', C=1, warm_start=True)
+        else:
+            self.dv_solver=dv_solver
 
     def fit_test(self, X, y, X_test, y_test):
         """ test after each iteration for monitoring """
@@ -319,8 +322,8 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
 
             start_testing = time()
             # test on testing data
-            # TODO error = (self.predict(X_test) != y_test).sum() / len(y_test)
-            error = (self.predict(X) != y).sum() / len(y)
+            error = (self.predict(X_test) != y_test).sum() / len(y_test)
+            # try training data error = (self.predict(X) != y).sum() / len(y)
             print("[Iter %s] error=%s" % (iboost, error))
             testing_time += time() - start_testing
 
@@ -377,14 +380,6 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
             # Validate dv_interval
             if self.dv_interval <= 0:
                 raise ValueError("dv_interval must be postive")
-            if self.dv_loss not in ("log", "hinge", "perceptron"):
-                raise ValueError(
-                    "dv_loss can only be log, hinge, or perceptron"
-                )
-            if self.dv_penalty not in ("none", "l1", "l2"):
-                raise ValueError(
-                    "dv_penalty: %s is not supported" % self.dv_penalty
-                )
 
     def _boost(self, iboost, X, y, sample_weight, random_state):
         if self.algorithm == 'SAMME.R':
@@ -528,14 +523,6 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
 
         y_predict = estimator.predict(X)
 
-        if keep_predict:
-            if iboost == 0:
-                self.predicts_ = np.array([y_predict])
-            else:
-                self.predicts_ = np.append(
-                    self.predicts_, np.array([y_predict]), axis=0
-                )
-
         if iboost == 0:
             self.classes_ = getattr(estimator, 'classes_', None)
             self.n_classes_ = len(self.classes_)
@@ -543,6 +530,16 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
                 raise ValueError(
                     "The binary classification algorithm"
                     "only supports two classes"
+                )
+
+        # Record the past predictions for DV
+        classes = self.classes_[0] # class 0 is -1
+        if keep_predict:
+            if iboost == 0:
+                self.predicts_ = np.array([(y_predict == classes)*-2+1])
+            else:
+                self.predicts_ = np.append(
+                    self.predicts_, np.array([(y_predict == classes)*-2+1]), axis=0
                 )
 
         # Instances incorrectly classified
@@ -569,7 +566,6 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
                 )
             return None, None, None
 
-        # Boost weight using multi-class AdaBoost SAMME alg
         estimator_weight = 0.5 * (
             np.log((1. - estimator_error) / estimator_error)
         )
@@ -597,32 +593,28 @@ class AdaBoostClassifier(BaseWeightBoosting, ClassifierMixin):
             X_map = self.predicts_.T
 
             # 1. Train the votes
-            vote_model = SGDClassifier(
-                loss=self.dv_loss,
-                penalty=self.dv_penalty,
-                fit_intercept=False,
-                max_iter=self.dv_max_iter,
-                learning_rate='constant',
-                eta0=0.001
-            )
+            vote_model = self.dv_solver
 
             coef_init = np.array([
                 np.append(self.estimator_weights_[:iboost], estimator_weight)
             ])
+
+            # Better that warm_start is True
+            vote_model.coef_ = coef_init
+
             # Assume equal initial sample weights for simplicity
-            vote_model.fit(X_map, y, coef_init=coef_init)
+            vote_model.fit(X_map, y)
 
             # Scale the votes to keep constant sum
             self.estimator_weights_[:iboost + 1] = vote_model.coef_[
                 0
-            ] #/ vote_model.coef_[0].sum() * coef_init.sum()
+            ] / vote_model.coef_[0].sum() * coef_init.sum()
             estimator_weight = self.estimator_weights_[iboost]
 
             # Calculate sample weights (assume equal initial sample weights)
             sample_weight = np.exp(
-                X_map.dot(self.estimator_weights_[:iboost + 1]) * y * -1
+                X_map.dot(self.estimator_weights_[:iboost + 1]) * ((y == self.classes_[0]) * -2 + 1) * -1
             )
-            sample_weight /= sample_weight.sum()
 
         # NOTICE: the estimator error reports error irresponsive to dynamic votes
         return sample_weight, estimator_weight, estimator_error

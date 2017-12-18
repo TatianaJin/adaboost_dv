@@ -80,17 +80,13 @@ def example_DV(
     y_test,
     n_estimators=50,
     dv_interval=50,
-    dv_max_iter=50,
-    dv_loss="log",
-    dv_penalty="none"
+    dv_solver=None
 ):
     clf = AdaBoostClassifier(
         n_estimators=n_estimators,
         algorithm='DYNAMIC_VOTES',
         dv_interval=dv_interval,
-        dv_max_iter=dv_max_iter,
-        dv_loss=dv_loss,
-        dv_penalty=dv_penalty
+        dv_solver=dv_solver
     )
     start_time = time()
     clf.fit_test(X, y, X_test, y_test)
