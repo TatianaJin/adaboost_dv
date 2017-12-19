@@ -1,0 +1,75 @@
+\section{The AdaboostDV Algorithm}
+
+\subsection{Overview}
+
+AdaboostDV extends Adaboost and introduces a dynamic vote adjusting step to accelerate training and mitigate the effects of outliers.
+
+\begin{algorithm}[h]
+	\caption{AdaBoostDV}
+	\label{alg:dv}
+	\textbf{Input}: training samples $(\boldsymbol{s_i}, y_i), i = 1, \dots, n$; the number of component classifiers $T$;
+	dynamic vote adjustment interval $c$
+	\begin{enumerate}
+		\item
+		Initialize the sample weights $W_i^{(0)} = 1/n$, $i = 1, 2, \dots, n$
+		
+		\item
+		For $t = 1$ to $T$:
+		\begin{enumerate}
+			\item
+			Fit a component classifier $h(\boldsymbol{s}, \hat{\theta_t})$ to the training data that minimizes the weighted classification error $\epsilon_t$
+			\[
+			\epsilon_t = \frac{1}{2}(1 - \sum_{i=1}^{n}W_i^{(t-1)}y_{i}h(\boldsymbol{s_i}, \theta_t)).
+			\]
+			
+			\item
+			Compute $\hat{\alpha_t} = \frac{1}{2}\ln\frac{1 - \epsilon_t}{ \epsilon_t}$.
+			
+			\item
+			If $t$ is a multiple of $c$:
+			 \begin{enumerate}
+			 	\item 
+			 	Calculate $sum_{old} = \sum_{j=1}^{t}\hat{\alpha_j}$.
+			 	\item 
+			 	Train a logistic regression model without intercept with $(h(\boldsymbol{s_i},\theta_1), h(\boldsymbol{s_i},\theta_2), \dots, h(\boldsymbol{s_i},\theta_t))$ as input feature vectors and $y_i$ as labels for  $i = 1, \dots, n$. Assign $\hat{\alpha_j}$ for $j = 1, \dots, t$ to be the learnt parameters.
+			 	\item
+			 	Scale $\hat{\alpha_j}, j = 1, \dots, t$ so that the sum of new votes is equal to $sum_{old}$. 
+			 	\item
+			 	Update $W_i^{(t)}, i = 1, \dots, n$ using Equation~(\ref{equ:weight_update})
+			 \end{enumerate}  
+			 Else:
+			\begin{enumerate}
+				\item 
+				Set $W_i^{(t)} = W_i^{(t-1)} \cdot \exp (-y_i\hat{\alpha_t}h(\boldsymbol{s_i}, \hat{\theta_t}))$, $i = 1, 2, \dots, n$.
+				\item
+				Normalize $W_i^{(t)}$ so that the weights sum to one. 
+			\end{enumerate}
+		\end{enumerate}
+		
+		\item
+		Output $h_T(\boldsymbol{s}) = \frac{\sum_{t = 1}^T \hat{\alpha_t} h(\boldsymbol{s}, \hat{\theta_t})}{\sum_{t = 1}^T \hat{\alpha_t}}$.
+	\end{enumerate}
+\end{algorithm}
+
+Algorithm~\ref{alg:dv} shows the AdaboostDV algorithm.
+Similar to Adaboost, AdaboostDV selects the weak classifiers in iterations. While the vote of each classifier in Adaboost is fixed once calculated, AdaboostDV adjusts all votes every $c$ iterations, where $c$ is the vote adjustment interval. In iterations without vote adjustment, the vote of the new weak classifier and the new sample weights are calculated by Equation~%TODO vote equation
+and %TODO sample weight equation
+
+In iterations with the vote adjustment step, the votes are learned from a transformed binary classification problem. The weak classifiers constitute a mapping function of the training samples to a new feature space where the value on each dimension is -1 or 1. Thus in iteration $t$, each sample $\boldsymbol{s_i}$ is mapped to a $t$-dimensional feature vector $\boldsymbol{s_i'} = (h(\boldsymbol{s_i},\theta_1), h(\boldsymbol{s_i},\theta_2), \dots, h(\boldsymbol{s_i},\theta_t))$. The transformed binary classification problem takes the mapped samples as input and learns a binary classifier in the new feature space, where the learnt parameters can be scaled to obtain the new votes.
+
+\subsection{Vote Adjustment and Sample Weight Calculation}
+The choice of model for the binary classifier in the vote adjustment step involves two major concerns: the training cost (time to calculate the new votes) and the sensitivity to outliers. AdaboostDV adopts logistic regression as the underlying model since logistic regression is relatively less susceptible to outliers.
+
+To get the new votes $\boldsymbol{\alpha_{new}}$, Adaboost first initializes the parameter weights to be the votes prior to adjustment $\boldsymbol{\alpha_{old}}$, and trains the logistic regression model using gradient descent. With such initialization, the training of the logistic regression model can terminate within a small number of iterations (within 20). After training, $\boldsymbol{\alpha_{new}}$ is first assigned to be the learnt parameters, and then scaled so that the sum of $\boldsymbol{\alpha_{new}}$ equals to that of $\boldsymbol{\alpha_{old}}$. 
+
+Before continuing with the next iteration, the sample weights are updated with the following equation
+
+\begin{equation} \label{equ:weight_update}
+W_i^{(t)} = \frac{1}{Z_t}exp(-y_i \cdot h_t(\boldsymbol{s_i})), % TODO check
+\end{equation}
+where $Z_t$ is chosen so that the weights $W_i^{(t)}$ sum to one.
+
+Notice that keeping the same sum for votes before and after adjustment is necessary. It ensures that the adjusted votes have similar scale to the votes calculated in the next iterations using Equation~%TODO vote equation.
+and the misclassified samples will not get excessive weights. Since $h_t(\boldsymbol{s_i})$ is linear to the scale of the votes and the sample weight $W_i^{(t)}$ vary exponentially to $h_t(\boldsymbol{s_i})$%TODO check notation
+, larger/smaller scales of adjusted votes will result in significantly large/small variances in sample weights and thus the votes of subsequent weak classifiers may be very large(dominating the classification)/small(having little impact).
+

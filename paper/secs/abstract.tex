@@ -1,0 +1,8 @@
+\begin{abstract}
+Boosting is an approach of ensemble learning which combines many reasonably accurate weak classifiers to construct a classifier with high accuracy and good generalization. The Adaboost algorithm is one of the most popular.
+Adaboost learns the final classifier in a greedy manner. It optimizes only one weak classifier and the vote in each iteration with previously learnt classifiers and votes fixed, rendering the previous votes suboptimal.
+In addition, as the latest weak classifier focuses more on samples that are misclassified so far, Adaboost is sensitive to noise and outliers.
+To address the limitations, a dynamic vote adjusting algorithm is proposed to aggressively optimize the training error by tuning all votes every several iterations.
+Experiments show that the proposed algorithm achieves significantly faster training error reduction and better test accuracy with similar or even less training time.
+
+\end{abstract}

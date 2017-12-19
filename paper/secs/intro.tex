@@ -1,0 +1,11 @@
+\section{Introduction}
+
+As an important branch of ensemble learning, boosting algorithms learn many diverse and reasonably accurate weak classifiers and produce the predictions by combining the votes (weight coefficients of the weak classifiers). Adaboost is a widely applied boosting algorithms featured by good accuracy and generalization along with relatively low training cost.
+
+Adaboost adopts exponential loss and trains the decision model in a greedy manner. The algorithm iteratively selects one weak classifier and optimizes the corresponding vote in each iteration, with previously learnt classifiers and votes fixed. Due to the greedy nature of Adaboost, while the vote of the weak classifier in the current iteration is optimal, the previous votes may be suboptimal. The exponential loss, namely the upper-bound on the training error, can be aggressively reduced by optimizing all the votes given the learnt weak classifiers to speed up training.
+
+In addition, as the latest weak classifier focuses on samples that remain misclassified so far, Adaboost is sensitive to noise and outliers. The weak classifiers, which correctly classify "bad" samples (noisy samples or outliers) at the cost of misclassifying "good" samples, may have large votes as the "bad" samples are hard to classify and accumulate exponentially large weights through the iterations. These classifiers bring bad effects on the margin of the decision model.
+
+To address the limitations, a dynamic vote adjusting algorithm (AdaboostDV) is proposed to aggressively optimize the training error by tuning all votes every several iterations. The vote adjustment is modeled as a binary classification problem. The weak classifiers constitute a mapping function of the training samples to a new feature space where the value on each dimension is -1 or 1. The vote adjustment algorithm takes the mapped samples as input, and learns the votes by minimizing the classification error in the new feature space.
+
+Experiments show that the proposed algorithm achieves significantly faster training error reduction and better test accuracy with similar or even less training time.
